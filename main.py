@@ -49,9 +49,11 @@ class FeedbackResponse(BaseModel):
     created_at: str
 
 def _class_to_label(c: int) -> str:
+    """Convert a class integer to its corresponding risk label."""
     return ["Low Risk", "Medium Risk", "High Risk"][int(c)]
 
 def _probas_to_percent_and_label(probas):
+    """Converts probabilities to percentage and corresponding label."""
     best_idx = int(probas.argmax())
     risk_percent = float(probas[best_idx] * 100.0)
     label = _class_to_label(best_idx)
@@ -59,7 +61,7 @@ def _probas_to_percent_and_label(probas):
 
 # Role-based authorization dependencies
 def get_manufacturer_user(current_user: UserDB = Depends(get_current_user)):
-    """Dependency to ensure user is a manufacturer"""
+    """Ensure the current user is a manufacturer."""
     if current_user.role != "manufacturer":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -68,7 +70,7 @@ def get_manufacturer_user(current_user: UserDB = Depends(get_current_user)):
     return current_user
 
 def get_admin_user(current_user: UserDB = Depends(get_current_user)):
-    """Dependency to ensure user is an admin"""
+    """Ensure the current user is an admin."""
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -90,6 +92,7 @@ if Path(ALT_INDEX_PATH).exists():
 # Authentication endpoints
 @app.post("/api/register")
 async def register(user: UserCreate):
+    """Register a new user in the system."""
     from auth import users_collection, UserDB, get_password_hash
     
     existing_user = users_collection.find_one({"username": user.username})
@@ -114,6 +117,7 @@ async def register(user: UserCreate):
 
 @app.post("/api/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Handles user login and returns an access token."""
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -133,6 +137,19 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 # Prediction endpoint
 @app.post("/api/risk/check", response_model=PredictOut)
 async def predict(payload: PredictIn, current_user: dict = Depends(get_current_user)):
+    """Predicts the risk associated with a device based on its manufacturer and name.
+    
+    This function processes the input payload to normalize the manufacturer and
+    device names,  then uses a trained model to predict the risk probabilities. If
+    the model is not available,  it raises an HTTP exception. The predicted
+    probabilities are converted to a percentage and  risk class, and additional
+    details are prepared for the response. It also suggests alternatives  based on
+    the input and stores the prediction data in MongoDB for future reference.
+    
+    Args:
+        payload (PredictIn): The input data containing manufacturer and device names.
+        current_user (dict?): The current user information, retrieved via dependency injection.
+    """
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -195,6 +212,7 @@ async def get_alternatives(
     top_k: int = 5,
     current_user: dict = Depends(get_current_user)
 ):
+    """Fetch alternatives for a given manufacturer and device."""
     if alt_index is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -210,9 +228,7 @@ async def submit_feedback(
     feedback: FeedbackData, 
     current_user: UserDB = Depends(get_current_user)
 ):
-    """
-    Submit user feedback about a prediction
-    """
+    """Submit user feedback about a prediction."""
     feedback_dict = feedback.dict()
     feedback_dict["username"] = current_user.username
     feedback_dict["created_at"] = datetime.now().isoformat()
@@ -229,10 +245,8 @@ async def submit_feedback(
 # Manufacturer dashboard endpoint - Updated to show manufacturer's devices
 @app.get("/api/manufacturer/dashboard", response_model=DashboardStats)
 async def manufacturer_dashboard(current_user: UserDB = Depends(get_manufacturer_user)):
-    """
-    Get filtered data for the logged-in manufacturer
-    """
     # Get manufacturer details to get company name
+    """Retrieve filtered data for the logged-in manufacturer."""
     manufacturer = manufacturers_collection.find_one({"username": current_user.username})
     if not manufacturer:
         raise HTTPException(
@@ -258,26 +272,20 @@ async def manufacturer_dashboard(current_user: UserDB = Depends(get_manufacturer
 # Get manufacturer's devices
 @app.get("/api/manufacturer/devices")
 async def get_manufacturer_devices(current_user: UserDB = Depends(get_manufacturer_user)):
-    """
-    Get all devices for the logged-in manufacturer
-    """
+    """Get all devices for the logged-in manufacturer."""
     devices = get_devices_by_username(current_user.username)
     return {"devices": devices}
 
 # Super Admin endpoints
 @app.get("/api/admin/users", response_model=List[UserResponse])
 async def get_all_users(current_user: UserDB = Depends(get_super_admin_user)):
-    """
-    Get all users (Super Admin only)
-    """
+    """Retrieve all users for Super Admin only."""
     users = list(users_collection.find({}, {"_id": 0, "hashed_password": 0}))
     return users
 
 @app.get("/api/admin/manufacturers", response_model=List[ManufacturerResponse])
 async def get_all_manufacturers(current_user: UserDB = Depends(get_super_admin_user)):
-    """
-    Get all manufacturers (Super Admin only)
-    """
+    """Retrieve all manufacturers for Super Admins only."""
     manufacturers = list(manufacturers_collection.find({}, {"_id": 0, "hashed_password": 0}))
     return manufacturers
 
@@ -287,9 +295,7 @@ async def update_user_status(
     is_active: bool,
     current_user: UserDB = Depends(get_super_admin_user)
 ):
-    """
-    Update user status (Super Admin only)
-    """
+    """Update the status of a user (Super Admin only)."""
     result = users_collection.update_one(
         {"username": username},
         {"$set": {"is_active": is_active}}
@@ -309,9 +315,7 @@ async def update_manufacturer_status(
     is_active: bool,
     current_user: UserDB = Depends(get_super_admin_user)
 ):
-    """
-    Update manufacturer status (Super Admin only)
-    """
+    """Update the status of a manufacturer by username."""
     result = manufacturers_collection.update_one(
         {"username": username},
         {"$set": {"is_active": is_active}}
@@ -332,6 +336,7 @@ async def continuous_learning(
     current_user: UserDB = Depends(get_manufacturer_user)
 ):
     # Store in MongoDB
+    """Handles the continuous learning endpoint for device data submission."""
     device_data = {
         "device_name": payload.device_name,
         "manufacturer_name": payload.manufacturer_name,
@@ -357,11 +362,13 @@ async def continuous_learning(
 # Health endpoint
 @app.get("/api/health")
 async def health():
+    """Returns the health status of the application."""
     return {"status": "ok"}
 
 # Model info endpoint
 @app.get("/api/model_info")
 async def get_model_info(current_user: dict = Depends(get_current_user)):
+    """Retrieve information about the model."""
     model_info = {
         "model_type": type(model).__name__ if model else "Not loaded",
         "model_features": ["manufacturer_name", "device_name"],
@@ -379,6 +386,7 @@ async def get_model_info(current_user: dict = Depends(get_current_user)):
 # Get all devices
 @app.get("/api/devices")
 async def get_devices(current_user: dict = Depends(get_current_user)):
+    """Retrieve all devices for the current user."""
     devices = get_all_devices()
     return {"devices": devices}
 
@@ -391,6 +399,7 @@ class ManufacturerCreate(BaseModel):
 
 @app.post("/api/register/manufacturer")
 async def register_manufacturer(manufacturer: ManufacturerCreate):
+    """Register a new manufacturer account."""
     from auth import create_manufacturer_user
     
     success, message = create_manufacturer_user(
@@ -410,6 +419,7 @@ async def register_manufacturer(manufacturer: ManufacturerCreate):
 
 @app.post("/api/login/manufacturer", response_model=Token)
 async def login_manufacturer(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Handles the login process for manufacturers and returns an access token."""
     user = authenticate_manufacturer(form_data.username, form_data.password)
     if not user:
         raise HTTPException(

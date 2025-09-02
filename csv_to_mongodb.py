@@ -170,6 +170,7 @@ from config import MONGODB_URI, MONGODB_DB_NAME, DATASET_PATH  # reuse your conf
 
 def upload_csv_to_mongo():
     # 1. Read CSV
+    """Uploads data from a CSV file to a MongoDB collection."""
     df = pd.read_csv(DATASET_PATH)
 
     # 🔧 2. Replace NaN/NaT with None (MongoDB-compatible)

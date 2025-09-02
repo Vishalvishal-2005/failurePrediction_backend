@@ -27,6 +27,7 @@ SUPER_ADMIN_USERNAME = "admin"  # Default super admin username
 
 # Initialize super admin if not exists
 def init_super_admin():
+    """Initialize the super admin user if it does not already exist."""
     super_admin = users_collection.find_one({"username": SUPER_ADMIN_USERNAME})
     if not super_admin:
         hashed_password = get_password_hash("admin123")  # Default password
@@ -51,6 +52,7 @@ class UserDB:
         self.role = role
     
     def to_dict(self):
+        """Convert the object to a dictionary representation."""
         return {
             "username": self.username,
             "email": self.email,
@@ -61,18 +63,22 @@ class UserDB:
 
 # Database dependency
 def get_db():
+    """Yield the database connection."""
     try:
         yield db
     finally:
         pass
 
 def verify_password(plain_password, hashed_password):
+    """Verify a plain password against a hashed password."""
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password):
+    """Generate a hashed password using pwd_context."""
     return pwd_context.hash(password)
 
 def get_user(username: str):
+    """Retrieve a user by username."""
     user_data = users_collection.find_one({"username": username})
     if user_data:
         user_data_without_id = {k: v for k, v in user_data.items() if k != '_id'}
@@ -80,6 +86,7 @@ def get_user(username: str):
     return None
 
 def get_manufacturer(username: str):
+    """Retrieve manufacturer information by username."""
     manufacturer_data = manufacturers_collection.find_one({"username": username})
     if manufacturer_data:
         return {
@@ -92,6 +99,17 @@ def get_manufacturer(username: str):
     return None
 
 def authenticate_user(username: str, password: str):
+    """def authenticate_user(username: str, password: str):
+    Authenticate a user based on username and password.  This function retrieves a
+    user by their username and checks the provided password against the stored
+    hashed password. If the user is not found,  it checks if the username belongs
+    to a manufacturer and verifies the  password accordingly. The function returns
+    a UserDB object for valid  users or manufacturers, and False for invalid
+    credentials.
+    
+    Args:
+        username (str): The username of the user or manufacturer.
+        password (str): The password provided for authentication."""
     user = get_user(username)
     if not user:
         # Check if it's a manufacturer
@@ -110,6 +128,7 @@ def authenticate_user(username: str, password: str):
     return user
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """Create a JSON Web Token (JWT) access token with an expiration time."""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -122,6 +141,16 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 # In auth.py, update the get_current_user function around line 147
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
+    """async def get_current_user(token: str = Depends(oauth2_scheme)):
+    Retrieve the current user based on the provided token.  This function decodes
+    the JWT token to extract the username and role.  It first attempts to retrieve
+    a user from the regular users collection.  If no user is found, it checks the
+    manufacturers collection. If a manufacturer  is found, it constructs a UserDB
+    object with the relevant details. The function  raises an HTTPException if the
+    credentials are invalid or if the user is inactive.
+    
+    Args:
+        token (str): The JWT token used for authentication."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -159,7 +188,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     user.role = role
     return user
 def get_super_admin_user(current_user: UserDB = Depends(get_current_user)):
-    """Dependency to ensure user is a super admin"""
+    """Ensure the user is a super admin."""
     if current_user.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -168,10 +197,8 @@ def get_super_admin_user(current_user: UserDB = Depends(get_current_user)):
     return current_user
 
 def create_manufacturer_user(username: str, email: str, password: str, company_name: str):
-    """
-    Create a manufacturer user with separate storage
-    """
     # Check if user already exists
+    """Create a manufacturer user with separate storage."""
     existing_user = manufacturers_collection.find_one({"username": username})
     if existing_user:
         return False, "Username already exists"
@@ -196,9 +223,7 @@ def create_manufacturer_user(username: str, email: str, password: str, company_n
     return True, str(result.inserted_id)
 
 def authenticate_manufacturer(username: str, password: str):
-    """
-    Authenticate manufacturer user
-    """
+    """Authenticate a manufacturer user."""
     manufacturer_data = manufacturers_collection.find_one({"username": username})
     if not manufacturer_data:
         return False
