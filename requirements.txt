@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pandas
+numpy
+scikit-learn
+joblib
+pyarrow
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+pymongo[srv]==4.6.1
