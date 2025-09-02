@@ -12,3 +12,4 @@ pymongo[srv]==4.6.1
 certifi==2025.7.4
 sqlalchemy==2.0.21
 psycopg2-binary==2.9.7
+python-dotenv
